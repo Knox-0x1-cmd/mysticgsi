@@ -105,10 +105,15 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## Usage
 
-Builds and rebuilds sign the image with AOSP's AVB RSA-2048 test key and a
+By default, builds and rebuilds use AOSP's AVB RSA-2048 test key and a
 SHA-256 hash tree. OpenSSL is required; avbtool and the key are bundled.
 Signing failures preserve the previous image. APK keys are unchanged;
 the signature does not make a locked stock bootloader accept the image.
+
+Use `--avb-key /path/to/key.pem` on `build` or `rebuild` to sign with your own
+unencrypted RSA private key (2048, 4096 or 8192 bits). The SHA-256 signing
+algorithm follows the key size. Omit the option to use AOSP's test key;
+pass it again when rebuilding. Invalid keys fail without falling back.
 
 ```sh
 .venv/bin/python cli.py build <name> <firmware or URL> --type <type> [--compress]

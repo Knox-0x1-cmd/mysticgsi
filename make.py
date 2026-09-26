@@ -317,6 +317,7 @@ class RomPorter:
         self.is_64bit_only = False
         self.programs_32bit_only = []
         self.debloat = True
+        self.avb_key = None
         self.work_dir = f"{tmp_dir}/{rom_name}"
         self.props: dict[str, SettingsProp] = {}
 
@@ -1927,7 +1928,8 @@ Architecture: {self._architecture()}
                 self.log(f"Image builder failed ({rc})")
                 return None
             self.logger.set_state("sign")
-            if tools.sign_system_image(image, logger=self.log) != 0:
+            if tools.sign_system_image(
+                    image, logger=self.log, key_path=self.avb_key) != 0:
                 return None
             system_size = os.path.getsize(image)
             os.replace(image, f"{out_dir}/{output_name}.img")

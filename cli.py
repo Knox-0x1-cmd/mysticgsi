@@ -15,6 +15,7 @@ import buildlock
 import fsops
 import make
 import tools
+from tools.image.signing import signing_parameters
 
 GSILIST = "tmp/gsilist.json"
 TAGS = re.compile(r"<[^>]+>")
@@ -142,6 +143,7 @@ def cmd_build(args):
         return 2
     wt.logger = ConsoleLogger()
     wt.debloat = not args.no_debloat
+    wt.avb_key = args.avb_key
 
     with buildlock.hold(on_busy=wait_for_lock):
         if "://" in args.source:
@@ -187,6 +189,7 @@ def cmd_rebuild(args):
         return 1
 
     wt = make.RomPorter(entry["rom_name"], entry.get("variant_tag", ""))
+    wt.avb_key = args.avb_key
     wt.logger = ConsoleLogger()
     with buildlock.hold(on_busy=wait_for_lock):
         system_size = wt.rebuild(entry["output_name"])
@@ -255,6 +258,14 @@ def human(size):
     return f"{size:.1f} PiB"
 
 
+def avb_key_path(value):
+    try:
+        path, _ = signing_parameters(value)
+    except (OSError, ValueError) as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
+    return path
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="CLI entry point for mysticgsi builds.")
@@ -285,6 +296,10 @@ def main():
     rebuild.add_argument("name", help="name of an earlier build")
     rebuild.add_argument(
         "--compress", action="store_true", help="also produce a .zip")
+    for command in (build, rebuild):
+        command.add_argument(
+            "--avb-key", type=avb_key_path, metavar="PEM",
+            help="RSA private key for AVB signing (default: AOSP test key)")
     rebuild.set_defaults(func=cmd_rebuild)
 
     lst = sub.add_parser("list", help=f"list builds recorded in {GSILIST}")
