@@ -14,10 +14,10 @@ def test_member_filter_keeps_only_what_the_pipeline_uses():
         "super.img", "super_1.img", "system.img_sparsechunk.3",
         "system.new.dat.br", "system.transfer.list", "AP_G998B.tar.md5",
         "system_X-FLASH-ALL-C93B.sin", "UPDATE.APP", "fw.kdz",
-        "vendor.bin", "super.bin",
+        "vendor.bin", "super.bin", "super.img.lz4", "system.img.lz4",
     }
     dropped = {"modem.img", "boot.img", "NON-HLOS.bin", "xbl.elf",
-               "vendor_boot.img", "system_other.img"}
+               "vendor_boot.img", "system_other.img", "boot.img.lz4"}
 
     assert {n for n in kept | dropped
             if postprocess.is_wanted(n, TARGETS)} == kept
@@ -50,6 +50,23 @@ def test_partition_dump_bin_files_become_images(tmp_path):
     assert rc == 0
     assert os.listdir(tmp_path / "out") == ["system.img"]
     assert (tmp_path / "out" / "system.img").read_bytes() == b"\x02" * 4096
+
+
+def test_lz4_partition_in_zip_reaches_postprocess(tmp_path):
+    import lz4.frame
+
+    firmware = tmp_path / "firmware.zip"
+    with zipfile.ZipFile(firmware, "w") as archive:
+        archive.writestr("system.img.lz4",
+                         lz4.frame.compress(b"partition data"))
+        archive.writestr("boot.img.lz4",
+                         lz4.frame.compress(b"unwanted data"))
+    output = tmp_path / "output"
+
+    assert extract_firmware(str(firmware), str(output),
+                            target_partitions=["system"]) == 0
+    assert (output / "system.img").read_bytes() == b"partition data"
+    assert list(output.iterdir()) == [output / "system.img"]
 
 
 @pytest.mark.parametrize("name", [

@@ -9,6 +9,9 @@ import glob
 import os
 import re
 import shutil
+import tempfile
+
+import lz4.frame
 
 try:
     import zstandard
@@ -39,6 +42,8 @@ def _remove(path: str):
 
 def normalize_partition_filename(filename: str) -> str:
     name = filename.strip().lower()
+    if name.endswith('.lz4'):
+        name = name[:-4]
 
     for suffix in FILENAME_SUFFIXES:
         if name.endswith(suffix):
@@ -70,7 +75,7 @@ def is_wanted(filename: str, targets: Set[str]) -> bool:
     named after a target partition or super. Containers, transfer lists,
     SIN files, sparse chunks etc. are always kept.
     """
-    if not filename.lower().endswith(IMAGE_EXTENSIONS):
+    if not filename.lower().endswith(IMAGE_EXTENSIONS + ('.lz4',)):
         return True
     part = partition_of(filename)
     return part in targets or 'super' in part
@@ -78,6 +83,24 @@ def is_wanted(filename: str, targets: Set[str]) -> bool:
 
 def _staged(staging_dir: str, pattern: str):
     return glob.glob(os.path.join(staging_dir, pattern), recursive=True)
+
+
+def _decompress_lz4(staging_dir: str, logger):
+    for path in _staged(staging_dir, '**/*.lz4'):
+        dest = path[:-4]
+        if logger:
+            logger(f"Decompressing {os.path.basename(path)}...")
+        fd, temp_path = tempfile.mkstemp(
+            prefix='lz4-', suffix='.img', dir=os.path.dirname(path))
+        try:
+            with os.fdopen(fd, 'wb') as out_f:
+                with lz4.frame.open(path, 'rb') as in_f:
+                    shutil.copyfileobj(in_f, out_f, 1024 * 1024)
+            os.replace(temp_path, dest)
+        except (OSError, RuntimeError) as error:
+            _remove(temp_path)
+            raise RuntimeError(f"Failed to decompress {path}: {error}")
+        _remove(path)
 
 
 def _rebuild_sdat(staging_dir: str, logger):
@@ -165,6 +188,7 @@ def postprocess_extracted_images(
         sin.extract_sin(s_file, staging_dir, logger=logger)
         _remove(s_file)
 
+    _decompress_lz4(staging_dir, logger)
     _rebuild_sdat(staging_dir, logger)
     _merge_sparse_chunks(staging_dir, logger)
 
